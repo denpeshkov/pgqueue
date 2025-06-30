@@ -9,7 +9,21 @@ import (
 	"context"
 )
 
-const jobGetAvailable = `-- name: JobGetAvailable :many
+const completeJob = `-- name: CompleteJob :one
+UPDATE job
+SET state = 'completed'::job_state
+WHERE id = $1::bigint
+RETURNING id, state, description
+`
+
+func (q *Queries) CompleteJob(ctx context.Context, id int64) (Job, error) {
+	row := q.db.QueryRow(ctx, completeJob, id)
+	var i Job
+	err := row.Scan(&i.ID, &i.State, &i.Description)
+	return i, err
+}
+
+const getJobs = `-- name: GetJobs :many
 WITH available_jobs AS (
     SELECT id
     FROM job
@@ -25,8 +39,8 @@ WHERE job.id = available_jobs.id
 RETURNING job.id, job.state, job.description
 `
 
-func (q *Queries) JobGetAvailable(ctx context.Context, batchSize int32) ([]Job, error) {
-	rows, err := q.db.Query(ctx, jobGetAvailable, batchSize)
+func (q *Queries) GetJobs(ctx context.Context, batchSize int32) ([]Job, error) {
+	rows, err := q.db.Query(ctx, getJobs, batchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -45,20 +59,43 @@ func (q *Queries) JobGetAvailable(ctx context.Context, batchSize int32) ([]Job, 
 	return items, nil
 }
 
-const jobInsert = `-- name: JobInsert :one
+const insertJob = `-- name: InsertJob :one
 INSERT INTO job(state, description)
 VALUES ($1::job_state, $2::jsonb)
 RETURNING id
 `
 
-type JobInsertParams struct {
+type InsertJobParams struct {
 	State JobState
 	Args  []byte
 }
 
-func (q *Queries) JobInsert(ctx context.Context, arg JobInsertParams) (int64, error) {
-	row := q.db.QueryRow(ctx, jobInsert, arg.State, arg.Args)
+func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertJob, arg.State, arg.Args)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const vacuumJobs = `-- name: VacuumJobs :one
+WITH deleted_jobs AS (
+    DELETE FROM job
+    WHERE id IN (
+        SELECT id
+        FROM job
+        WHERE state = 'completed'
+        ORDER BY id -- FIXME: maybe remove
+        LIMIT $1::integer
+    )
+    RETURNING id, state, description
+)
+SELECT count(*)
+FROM deleted_jobs
+`
+
+func (q *Queries) VacuumJobs(ctx context.Context, batchSize int32) (int64, error) {
+	row := q.db.QueryRow(ctx, vacuumJobs, batchSize)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }

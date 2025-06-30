@@ -1,3 +1,5 @@
+include .env
+
 .PHONY: all
 all: help tidy lint test test/cover
 
@@ -41,3 +43,12 @@ migrate/up: ## Run UP migrations
 .PHONY: migrate/down
 migrate/down: ## Run DOWN migrations
 	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path migration -database ${POSTGRESQL_URL} down
+
+.PHONY: postgresql
+postgresql: ## Run PostgreSQL container
+	docker run \
+		--name postgres \
+		-e POSTGRES_PASSWORD=postgres \
+		--mount type=volume,src=pgdata,dst=/var/lib/postgresql/data \
+		-p 5432:5432 \
+		-d postgres
