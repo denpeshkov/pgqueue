@@ -42,4 +42,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/denpeshkov/go-template
+        - github.com/denpeshkov/pgqueue
