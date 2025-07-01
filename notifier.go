@@ -12,21 +12,14 @@ import (
 )
 
 const (
-	chanSize            = 10
-	notificationChannel = "job-channel"
+	notificationChannel     = "job-channel"
+	notificationChannelSize = 10
 )
 
-type Subscription struct {
-	Payload string
-	closeCh chan<- struct{} // FIXME: handle errors
-}
-
-func (s Subscription) Done() {
-	s.closeCh <- struct{}{}
-}
-
+// Notifier LISTENs for notifications from PostgreSQL about newly added jobs,
+// and distributes them to subscribers.
 type Notifier struct {
-	subs []chan Subscription
+	subs []chan struct{}
 	ln   pgxln.Listener
 }
 
@@ -54,25 +47,15 @@ func (n *Notifier) Run(ctx context.Context) error {
 	return n.ln.Listen(ctx)
 }
 
-func (n *Notifier) Subscribe(_ context.Context) <-chan Subscription {
-	ch := make(chan Subscription, chanSize)
+func (n *Notifier) Subscribe(_ context.Context) <-chan struct{} {
+	ch := make(chan struct{}, notificationChannelSize)
 	n.subs = append(n.subs, ch)
 	return ch
 }
 
 func (n *Notifier) handle(ctx context.Context, notif *pgconn.Notification) {
 	for _, subCh := range n.subs {
-		// FIXME:
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		s := Subscription{
-			Payload: notif.Payload,
-			closeCh: make(chan<- struct{}),
-		}
-		subCh <- s
+		subCh <- struct{}{}
 	}
 }
 

@@ -5,13 +5,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/denpeshkov/pgqueue/sqlc"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	pgxln "github.com/jackc/pgxlisten"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -31,29 +28,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ln := pgxln.Listener{
-		Connect: func(ctx context.Context) (*pgx.Conn, error) {
-			conn, err := pool.Acquire(ctx)
-			return conn.Conn(), err
-		},
-		LogError:       func(_ context.Context, err error) { log.Printf("ERROR: %v\n", err) },
-		ReconnectDelay: 5 * time.Second,
+	n := NewNotifier(pool)
+
+	notifCh := n.Subscribe(context.TODO())
+
+	p := &Producer{db: sqlc.New(pool)}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return n.Run(ctx) })
+	g.Go(func() error { return p.Run(ctx, notifCh) })
+
+	if err := g.Wait(); err != nil {
+		log.Fatal(err)
 	}
-
-	q := sqlc.New(pool)
-
-	// TODO [pgxln.BacklogHandler]
-	h := pgxln.HandlerFunc(func(ctx context.Context, notif *pgconn.Notification, conn *pgx.Conn) error {
-		jobs, err := q.JobGetAvailable(ctx, 100)
-		if err != nil {
-			return err
-		}
-		for _, j := range jobs {
-			log.Printf("%s [%s]\n", j.Description.String, j.State)
-		}
-		return nil
-	})
-	ln.Handle("channel", h)
-
-	log.Fatal(ln.Listen(ctx))
 }

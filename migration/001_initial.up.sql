@@ -1,7 +1,7 @@
 CREATE TYPE job_state AS ENUM(
     'available',
     'running',
-    'completed',
+    'completed'
     -- 'failed'
 );
 
@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION job_notify() RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.state = 'available' THEN
         -- Same-payload notifications in a transaction are deduplicated.
-        PERFORM pg_notify('channel', ''); -- No payload
+        PERFORM pg_notify('job-channel', ''); -- No payload
     END IF;
     RETURN NULL;
 END; $$

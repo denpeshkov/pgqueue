@@ -44,11 +44,16 @@ migrate/up: ## Run UP migrations
 migrate/down: ## Run DOWN migrations
 	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path migration -database ${POSTGRESQL_URL} down
 
-.PHONY: postgresql
-postgresql: ## Run PostgreSQL container
-	docker run \
+.PHONY: postgresql/up
+postgresql/up: ## Run PostgreSQL container
+	docker run -d \
 		--name postgres \
 		-e POSTGRES_PASSWORD=postgres \
+		-e PGDATA=/var/lib/postgresql/data/pgdata \
 		--mount type=volume,src=pgdata,dst=/var/lib/postgresql/data \
 		-p 5432:5432 \
-		-d postgres
+		postgres
+
+.PHONY: postgresql/down
+postgresql/down: ## Stop PostgreSQL container
+	docker kill postgres && docker rm --force postgres
